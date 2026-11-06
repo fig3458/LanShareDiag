@@ -28,11 +28,17 @@ namespace LanShareDiag.Core
             get { return _worker.IsBusy; }
         }
 
-        public void Start(string targetHost, string sharePath)
+        public void Start(string targetHost, string sharePath, string probeUser, string probePassword)
         {
             if (_worker.IsBusy) return;
             _cancel = false;
-            _worker.RunWorkerAsync(new string[] { targetHost ?? "", sharePath ?? "" });
+            _worker.RunWorkerAsync(new string[]
+            {
+                targetHost ?? "",
+                sharePath ?? "",
+                probeUser ?? "",
+                probePassword ?? ""
+            });
         }
 
         public void Stop()
@@ -47,8 +53,9 @@ namespace LanShareDiag.Core
             string[] args = (string[])e.Argument;
             string targetHost = args[0].Trim();
             string sharePath = args[1].Trim();
+            string probeUser = args.Length > 2 ? args[2] : "";
+            string probePassword = args.Length > 3 ? args[3] : "";
 
-            // Normalize inputs
             if (string.IsNullOrEmpty(targetHost) && !string.IsNullOrEmpty(sharePath))
             {
                 string p = sharePath.Trim();
@@ -65,6 +72,8 @@ namespace LanShareDiag.Core
             session.SharePath = string.IsNullOrEmpty(sharePath)
                 ? (string.IsNullOrEmpty(targetHost) ? "" : "\\\\" + targetHost)
                 : sharePath;
+            session.ProbeUserName = probeUser;
+            session.ProbePassword = probePassword;
             session.StartedAt = DateTime.Now;
 
             try
@@ -75,11 +84,9 @@ namespace LanShareDiag.Core
                 if (_cancel) { e.Result = session; return; }
 
                 ReportProgress(session, "Ping 检测...");
-                DiagnosticItem ping = PingModule.PingHost(targetHost, 4, 2000);
-                AddItem(session, ping);
+                AddItem(session, PingModule.PingHost(targetHost, 4, 2000));
                 if (_cancel) { e.Result = session; return; }
 
-                // Resolve host for TCP if needed
                 string connectHost = targetHost;
                 IPAddress ip;
                 if (LocalNetworkModule.TryResolveIPv4(targetHost, out ip))
@@ -89,18 +96,28 @@ namespace LanShareDiag.Core
                 AddItem(session, TcpPortModule.TestTcp(connectHost, 445, 3000));
                 if (_cancel) { e.Result = session; return; }
 
+                ReportProgress(session, "探测访问出口...");
+                AddItem(session, RouteModule.ProbeEgress(connectHost, 445, 3000));
+                if (_cancel) { e.Result = session; return; }
+
                 ReportProgress(session, "TCP 139 检测...");
                 AddItem(session, TcpPortModule.TestTcp(connectHost, 139, 3000));
                 if (_cancel) { e.Result = session; return; }
 
                 ReportProgress(session, "SMB 客户端组件检测...");
-                int beforeSmb = session.Items.Count;
+                int before = session.Items.Count;
                 SmbClientModule.Diagnose(session);
-                RaiseFrom(session, beforeSmb);
+                RaiseFrom(session, before);
+                if (_cancel) { e.Result = session; return; }
+
+                ReportProgress(session, "客户端策略检测(来宾/签名/NetBIOS)...");
+                before = session.Items.Count;
+                ClientPolicyModule.Diagnose(session);
+                RaiseFrom(session, before);
                 if (_cancel) { e.Result = session; return; }
 
                 ReportProgress(session, "网络会话与凭据检测...");
-                int before = session.Items.Count;
+                before = session.Items.Count;
                 NetworkSessionModule.Diagnose(session, targetHost);
                 RaiseFrom(session, before);
                 if (_cancel) { e.Result = session; return; }
@@ -111,16 +128,26 @@ namespace LanShareDiag.Core
                 RaiseFrom(session, before);
                 if (_cancel) { e.Result = session; return; }
 
+                ReportProgress(session, "鉴权/名称对比探测...");
+                before = session.Items.Count;
+                AuthProbeModule.Diagnose(session);
+                RaiseFrom(session, before);
+                if (_cancel) { e.Result = session; return; }
+
                 ReportProgress(session, "事件日志摘要...");
                 before = session.Items.Count;
                 EventLogModule.Diagnose(session);
                 RaiseFrom(session, before);
+
+                // 密码用完即丢，避免残留
+                session.ProbePassword = string.Empty;
 
                 ReportProgress(session, "生成智能诊断结论...");
                 DecisionEngine.Analyze(session);
             }
             catch (Exception ex)
             {
+                session.ProbePassword = string.Empty;
                 session.AddLog("诊断引擎异常: " + ex.Message);
                 DiagnosticItem err = new DiagnosticItem();
                 err.Module = "Engine";
@@ -175,6 +202,5 @@ namespace LanShareDiag.Core
                 if (handler != null) handler(session.Items[i]);
             }
         }
-
     }
 }

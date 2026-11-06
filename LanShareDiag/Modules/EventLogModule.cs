@@ -21,22 +21,43 @@ namespace LanShareDiag.Modules
             total += AppendRecent("System", new string[] { "Service Control Manager", "Tcpip", "Server", "Workstation" }, lines, 8);
 
             // SMBClient channel exists mainly on Win8+/Win10 — must not treat missing as fault on Win7
+            bool guestBlockedHint = false;
             if (OsHelper.IsWindows10OrLater() || !OsHelper.IsWindows7OrOlder())
             {
                 try
                 {
                     if (EventLog.Exists("Microsoft-Windows-SMBClient/Operational"))
-                    {
                         total += AppendRecent("Microsoft-Windows-SMBClient/Operational", null, lines, 5);
-                    }
                     else
-                    {
                         lines.Add("SMBClient/Operational 通道不存在（在当前系统上可能不适用）。");
+                }
+                catch
+                {
+                    lines.Add("SMBClient Operational 日志不可用。");
+                }
+
+                try
+                {
+                    if (EventLog.Exists("Microsoft-Windows-SMBClient/Security"))
+                    {
+                        int before = lines.Count;
+                        total += AppendRecent("Microsoft-Windows-SMBClient/Security", null, lines, 6);
+                        for (int i = before; i < lines.Count; i++)
+                        {
+                            // 31017 = RejectedInsecureGuestAuth
+                            if (lines[i].IndexOf("ID=31017", StringComparison.OrdinalIgnoreCase) >= 0
+                                || lines[i].IndexOf("31017", StringComparison.Ordinal) >= 0
+                                || lines[i].IndexOf("guest", StringComparison.OrdinalIgnoreCase) >= 0
+                                || lines[i].IndexOf("来宾", StringComparison.Ordinal) >= 0)
+                            {
+                                guestBlockedHint = true;
+                            }
+                        }
                     }
                 }
                 catch
                 {
-                    lines.Add("SMBClient 日志通道不可用（Windows 7 上属正常情况）。");
+                    lines.Add("SMBClient Security 通道不可用（权限或系统版本限制）。");
                 }
             }
             else
@@ -47,7 +68,12 @@ namespace LanShareDiag.Modules
             item.CurrentValue = total + " 条相关事件";
             item.Description = lines.Count == 0 ? "未取到相关事件。" : string.Join("\r\n", lines.ToArray());
             item.Status = DiagStatus.Ok;
-            if (item.Description.IndexOf("失败", StringComparison.Ordinal) >= 0
+            if (guestBlockedHint)
+            {
+                item.Status = DiagStatus.Abnormal;
+                item.Recommendation = "日志显示可能拒绝了不安全来宾登录（如 31017）。请使用有效账号，或仅临时评估是否启用来宾（有风险）。";
+            }
+            else if (item.Description.IndexOf("失败", StringComparison.Ordinal) >= 0
                 || item.Description.IndexOf("error", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 item.Status = DiagStatus.Warning;

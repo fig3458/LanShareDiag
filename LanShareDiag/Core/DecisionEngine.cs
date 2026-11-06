@@ -15,6 +15,14 @@ namespace LanShareDiag.Core
             DiagnosticItem smb20 = session.FindItem("SMBClient", "SMB 2.0 客户端驱动");
             DiagnosticItem share = session.FindItem("ShareAccess", "共享枚举(net view)");
             DiagnosticItem sessionItem = session.FindItem("Session", "网络连接(net use)");
+            DiagnosticItem lmhosts = session.FindItem("ClientPolicy", "NetBIOS Helper(lmhosts)");
+            DiagnosticItem provider = session.FindItem("ClientPolicy", "网络提供程序顺序");
+            DiagnosticItem guest = session.FindItem("ClientPolicy", "不安全来宾登录");
+            DiagnosticItem signing = session.FindItem("ClientPolicy", "SMB 客户端签名");
+            DiagnosticItem egress = session.FindItem("Route", "访问出口网卡");
+            DiagnosticItem ipc = session.FindItem("AuthProbe", "IPC$ 凭据探测");
+            DiagnosticItem ev = session.FindItem("EventLog", "系统事件摘要");
+            DiagnosticItem subnet = session.FindItem("LocalNetwork", "网段匹配");
 
             bool pingOk = ping != null && ping.Status == DiagStatus.Ok;
             bool pingFail = ping != null && (ping.Status == DiagStatus.Warning || ping.Status == DiagStatus.Abnormal || ping.Status == DiagStatus.Error);
@@ -93,6 +101,57 @@ namespace LanShareDiag.Core
                 sb.AppendLine("SMB 2.0 客户端驱动配置未见 Disabled 异常。");
             }
 
+            if (subnet != null && subnet.Status == DiagStatus.Warning)
+            {
+                sb.AppendLine();
+                sb.AppendLine("目标与本机不在同一子网（跨网段）。请确认路由/网关可达，并核对“访问出口网卡”是否为预期物理网卡。");
+                recs.Add("跨网段场景：先确认路由与 ACL，再查 SMB。");
+            }
+            if (egress != null && !string.IsNullOrEmpty(egress.CurrentValue))
+                sb.AppendLine("实际访问出口: " + egress.CurrentValue);
+
+            if (lmhosts != null && lmhosts.Status == DiagStatus.Abnormal)
+            {
+                sb.AppendLine("TCP/IP NetBIOS Helper (lmhosts) 未运行。微软案例中，445 通仍报错误 53 时需优先恢复该服务。");
+                recs.Add("启动 lmhosts（TCP/IP NetBIOS Helper）。");
+                fixes.Add(new RepairSuggestion
+                {
+                    Id = "start_lmhosts",
+                    Title = "启动 NetBIOS Helper",
+                    Description = "启动 lmhosts 服务（需管理员）。",
+                    RequiresAdmin = true,
+                    Dangerous = false
+                });
+            }
+            if (provider != null && provider.Status == DiagStatus.Abnormal)
+            {
+                sb.AppendLine("网络提供程序顺序缺少 LanmanWorkstation，可导致找不到网络路径。");
+                recs.Add("修复 ProviderOrder，确保包含 LanmanWorkstation。");
+            }
+            if (guest != null && guest.Status == DiagStatus.Warning)
+            {
+                sb.AppendLine("本机可能禁止不安全来宾登录。若目标是无账密 NAS/老设备，会表现为策略阻止或拒绝访问（事件 31017）。");
+                recs.Add("优先用有效账号连接；勿轻易长期启用来宾。");
+            }
+            if (signing != null && signing.Status == DiagStatus.Warning)
+            {
+                sb.AppendLine("本机要求 SMB 签名。老 NAS 不支持签名时会连接失败——优先在服务端开签名。");
+                recs.Add("核对目标是否支持 SMB 签名。");
+            }
+            if (ev != null && ev.Status == DiagStatus.Abnormal)
+            {
+                sb.AppendLine("SMBClient 安全日志提示可能拒绝了来宾登录。");
+            }
+            if (ipc != null && ipc.Status == DiagStatus.Abnormal)
+            {
+                sb.AppendLine("IPC$ 凭据探测失败：" + (ipc.Description ?? ""));
+                recs.Add("核对用户名/密码、账户是否允许网络登录。");
+            }
+            else if (ipc != null && ipc.Status == DiagStatus.Ok)
+            {
+                sb.AppendLine("IPC$ 凭据探测成功，网络与鉴权基本可用。");
+            }
+
             if (share != null)
             {
                 sb.AppendLine();
@@ -105,8 +164,8 @@ namespace LanShareDiag.Core
                     sb.AppendLine("共享访问异常：" + (share.Description ?? ""));
                     if (port445Ok && shareErr == 53)
                     {
-                        sb.AppendLine("场景判断：445 可达但错误 53 — 重点检查 Workstation、mrxsmb10/20、协议兼容与第三方过滤驱动，不要直接当成权限问题。");
-                        recs.Add("核对 SMB 客户端组件与协议协商。");
+                        sb.AppendLine("场景判断：445 可达但错误 53 — 重点检查 lmhosts、ProviderOrder、Workstation、mrxsmb10/20、协议兼容，不要直接当成权限问题。");
+                        recs.Add("核对 NetBIOS Helper / ProviderOrder / SMB 客户端组件。");
                     }
                     else if (port445Ok && shareErr == 64)
                     {

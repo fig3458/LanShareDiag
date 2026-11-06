@@ -131,6 +131,9 @@ namespace LanShareDiag.Models
     {
         public string TargetHost { get; set; }
         public string SharePath { get; set; }
+        /// <summary>可选探测账号；密码仅内存使用，禁止写入报告。</summary>
+        public string ProbeUserName { get; set; }
+        public string ProbePassword { get; set; }
         public DateTime StartedAt { get; set; }
         public DateTime FinishedAt { get; set; }
         public LocalHostInfo LocalHost { get; set; }
@@ -149,6 +152,8 @@ namespace LanShareDiag.Models
             StartedAt = DateTime.Now;
             TargetHost = string.Empty;
             SharePath = string.Empty;
+            ProbeUserName = string.Empty;
+            ProbePassword = string.Empty;
             Conclusion = string.Empty;
         }
 

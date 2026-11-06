@@ -36,6 +36,8 @@ namespace LanShareDiag.Repair
                     return FixMrxsmb20();
                 case "start_workstation":
                     return StartWorkstation();
+                case "start_lmhosts":
+                    return StartNamedService("lmhosts", "TCP/IP NetBIOS Helper");
                 case "flush_dns":
                     return FlushDns();
                 case "clear_target_session":
@@ -95,13 +97,18 @@ namespace LanShareDiag.Repair
 
         private static RepairResult StartWorkstation()
         {
+            return StartNamedService("LanmanWorkstation", "Workstation");
+        }
+
+        private static RepairResult StartNamedService(string serviceName, string display)
+        {
             if (!AdminHelper.IsAdministrator())
                 return Fail("需要管理员权限。");
 
             RepairResult r = new RepairResult();
             try
             {
-                using (ServiceController sc = new ServiceController("LanmanWorkstation"))
+                using (ServiceController sc = new ServiceController(serviceName))
                 {
                     r.Before = sc.Status.ToString();
                     if (sc.Status != ServiceControllerStatus.Running)
@@ -112,7 +119,7 @@ namespace LanShareDiag.Repair
                     sc.Refresh();
                     r.After = sc.Status.ToString();
                     r.Success = sc.Status == ServiceControllerStatus.Running;
-                    r.Message = r.Success ? "Workstation 已运行。" : "启动后状态=" + r.After;
+                    r.Message = r.Success ? display + " 已运行。" : "启动后状态=" + r.After;
                 }
             }
             catch (Exception ex)

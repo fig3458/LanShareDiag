@@ -13,6 +13,8 @@ namespace LanShareDiag
     {
         private TextBox _txtTarget;
         private TextBox _txtShare;
+        private TextBox _txtUser;
+        private TextBox _txtPassword;
         private Button _btnStart;
         private Button _btnStop;
         private Button _btnClear;
@@ -33,13 +35,22 @@ namespace LanShareDiag
 
         public MainForm()
         {
-            Text = "局域网共享故障诊断工具  v1.0";
-            Width = 980;
-            Height = 720;
-            MinimumSize = new Size(860, 600);
+            Text = "局域网共享故障诊断工具  v2.0";
+            Width = 1000;
+            Height = 760;
+            MinimumSize = new Size(880, 640);
             StartPosition = FormStartPosition.CenterScreen;
             Font = CreateUiFont(9F, FontStyle.Regular);
             BackColor = Color.FromArgb(245, 247, 250);
+            try
+            {
+                string ico = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "app.ico");
+                if (System.IO.File.Exists(ico))
+                    Icon = new Icon(ico);
+                else
+                    Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+            }
+            catch { }
 
             BuildUi();
             WireEngine();
@@ -98,13 +109,13 @@ namespace LanShareDiag
 
             Panel top = new Panel();
             top.Dock = DockStyle.Top;
-            top.Height = 108;
+            top.Height = 138;
             top.Padding = new Padding(12);
             top.BackColor = Color.White;
             Controls.Add(top);
 
             Label title = new Label();
-            title.Text = "Windows 局域网共享诊断";
+            title.Text = "Windows 局域网共享诊断 v2";
             title.Font = CreateUiFont(14F, FontStyle.Bold);
             title.AutoSize = true;
             title.Location = new Point(12, 10);
@@ -147,31 +158,61 @@ namespace LanShareDiag
             _txtShare.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             top.Controls.Add(_txtShare);
 
+            Label l3 = new Label();
+            l3.Text = "探测账号(可选):";
+            l3.Location = new Point(12, 74);
+            l3.AutoSize = true;
+            top.Controls.Add(l3);
+
+            _txtUser = new TextBox();
+            _txtUser.Location = new Point(120, 70);
+            _txtUser.Width = 160;
+            top.Controls.Add(_txtUser);
+
+            Label l4 = new Label();
+            l4.Text = "密码:";
+            l4.Location = new Point(290, 74);
+            l4.AutoSize = true;
+            top.Controls.Add(l4);
+
+            _txtPassword = new TextBox();
+            _txtPassword.Location = new Point(330, 70);
+            _txtPassword.Width = 160;
+            _txtPassword.UseSystemPasswordChar = true;
+            top.Controls.Add(_txtPassword);
+
+            Label l5 = new Label();
+            l5.Text = "密码仅用于本次 IPC$ 探测，不写入报告。";
+            l5.AutoSize = true;
+            l5.ForeColor = Color.FromArgb(100, 100, 100);
+            l5.Location = new Point(500, 74);
+            top.Controls.Add(l5);
+
             _btnStart = MakeButton("开始诊断", 120, 44);
-            _btnStart.Location = new Point(12, 74);
+            _btnStart.Location = new Point(12, 102);
             _btnStart.Click += BtnStart_Click;
             top.Controls.Add(_btnStart);
 
             _btnStop = MakeButton("停止", 80, 44);
-            _btnStop.Location = new Point(140, 74);
+            _btnStop.Location = new Point(140, 102);
             _btnStop.Enabled = false;
             _btnStop.Click += BtnStop_Click;
             top.Controls.Add(_btnStop);
 
             _btnClear = MakeButton("清空结果", 90, 44);
-            _btnClear.Location = new Point(228, 74);
+            _btnClear.Location = new Point(228, 102);
             _btnClear.Click += BtnClear_Click;
             top.Controls.Add(_btnClear);
 
             _btnExport = MakeButton("导出报告", 90, 44);
-            _btnExport.Location = new Point(326, 74);
+            _btnExport.Location = new Point(326, 102);
             _btnExport.Click += BtnExport_Click;
             top.Controls.Add(_btnExport);
 
             _lblStatus = new Label();
-            _lblStatus.Text = "就绪 — 默认只读诊断，修复需确认。";
+            _lblStatus.Text = "就绪 — v2 增强策略/出口/鉴权探测；修复需确认。";
             _lblStatus.AutoSize = true;
-            _lblStatus.Location = new Point(430, 84);
+            _lblStatus.Location = new Point(430, 108);
             top.Controls.Add(_lblStatus);
 
             // Hint sync share path
@@ -302,7 +343,7 @@ namespace LanShareDiag
             _btnStop.Enabled = true;
             _btnExport.Enabled = false;
             _lblStatus.Text = "诊断进行中...";
-            _engine.Start(target, share);
+            _engine.Start(target, share, _txtUser.Text.Trim(), _txtPassword.Text);
         }
 
         private void BtnStop_Click(object sender, EventArgs e)

@@ -1,8 +1,9 @@
-bin/
+﻿bin/
 obj/
 *.user
 *.suo
-*.pdb
-*.cache
+.vs/
 *.exe
-!build.bat
+*.pdb
+packages/
+
